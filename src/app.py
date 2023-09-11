@@ -9,6 +9,10 @@ from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Favorites, Planets, People
+import datetime
+from flask_jwt_extended import JWTManager
+
+
 #from models import Person
 
 app = Flask(__name__)
@@ -117,6 +121,71 @@ def delete_favorite_people(people_id):
     db.session.commit()  
     return jsonify(people_favorite.serialize()), 200
 
+
+# Setup the Flask-JWT-Extended extension
+app.config["JWT_SECRET_KEY"] = "super-secret"  # Change this "super secret" with something else!
+jwt = JWTManager(app)
+
+from flask_jwt_extended import jwt_required, get_jwt_identity
+# Protect a route with jwt_required, which will kick out requests
+# without a valid JWT present.
+@app.route("/protected", methods=["GET"])
+@jwt_required()
+def protected():
+    # Access the identity of the current user with get_jwt_identity
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    return jsonify({"id": user.id, "username": user.username }), 200
+
+from flask_jwt_extended import create_access_token
+
+@app.route("/token", methods=["GET"])
+def create_token():
+    username = request.args.get("username", None)
+    password = request.args.get("password", None)
+    # Query your database for username and password
+    user = User.query.filter_by(username=username, password=password).first()
+    if user is None:
+        # the user was not found on the database
+        return jsonify({"msg": "Bad username or password"}), 401
+    
+    # create a new token with the user id inside
+    access_token = create_access_token(identity=user.id)
+    return jsonify({ "token": access_token, "user_id": user.id })
+
+# Add the new route for creating a user with method GET
+@app.route("/create-user", methods=["GET"])
+def create_user():
+    # Get user data from the request
+    first_name = request.args.get("first_name", None)
+    email = request.args.get("email", None)
+    password = request.args.get("password", None)
+
+    # Check if required fields are missing
+    if not email or not password:
+        return jsonify({"error": "Both email and password are required"}), 400
+
+    # Check if the email already exists in the database
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        return jsonify({"error": "Email already exists"}), 400
+
+    # Hash the user password for security
+    hashed_password = generate_password_hash(password, method="sha256")
+
+    # Create a new User object and add it to the database
+    new_user = User(
+        first_name=first_name,
+        email=email,
+        password=hashed_password,
+        is_active=True  
+    )
+
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify({"msg": "User created successfully"}), 201
 
 # this only runs if `$ python src/app.py` is executed
 if __name__ == '__main__':
