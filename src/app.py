@@ -41,6 +41,7 @@ def sitemap():
     return generate_sitemap(app)
 
 @app.route('/user', methods=['GET'])
+@jwt_required()
 def handle_hello():
 
     users = User.query.all()
@@ -48,35 +49,42 @@ def handle_hello():
 
     return jsonify(all_users), 200
 
-@app.route('/users/<int:users_id>/favorites', methods=['GET'])
+@app.route('/users/favorites', methods=['GET'])
+@jwt_required()
 def get_user_favorite():
-    user_favorites = Favorites.query.all()
+    user_id=get_jwt_identity()
+    user_favorites = Favorites.query.filter(user_id=user_id)
     all_favorites = list(map(lambda x: x.serialize(), user_favorites))
     return jsonify(all_favorites), 200
 
 @app.route('/people', methods=['GET'])
+@jwt_required()
 def get_people():
     people = People.query.all()
     all_peoples = list(map(lambda x: x.serialize(), people))
     return jsonify(all_peoples), 200
 
 @app.route('/people/<int:people_id>', methods=['GET'])
+@jwt_required()
 def get_single_person(people_id):
     person = People.query.get(people_id)
     return jsonify(person.serialize()), 200 
 
 @app.route('/planets', methods=['GET'])
+@jwt_required()
 def get_planets():
     planets = Planets.query.all()
     all_planets = list(map(lambda x: x.serialize(), planets))
     return jsonify(all_planets), 200
 
 @app.route('/planets/<int:planets_id>', methods=['GET'])
+@jwt_required()
 def get_single_planet(planets_id):
     planet = Planets.query.get(planets_id)
     return jsonify(planet.serialize()), 200
 
 @app.route('/favorite/planet/<int:planets_id>', methods=['POST'])
+@jwt_required()
 def post_favorite_planet(planets_id):
     planet = Planets.query.get(planets_id)
     if not planet:
@@ -88,19 +96,29 @@ def post_favorite_planet(planets_id):
     return jsonify(new_planet.serialize()), 200
 
 
-@app.route('/favorite/people/<int:people_id>', methods=['POST'])
-def post_favorite_person(people_id):
+@app.route('/favorite/people', methods=['POST'])
+@jwt_required()
+def post_favorite_person():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    people_id = data.get('people_id')
+
+    if not people_id:
+        return jsonify({'message': 'Missing people_id in request body'}), 400
+
     person = People.query.get(people_id)
     if not person:
-        raise APIException('Person not found', status_code=404)
+        return jsonify({'message': 'Person not found'}), 404
 
-    new_person = Favorites(name=person.name, people_id=people_id)
+    new_person = Favorites(name=person.name, people_id=people_id, user_id=user_id)
     db.session.add(new_person)
     db.session.commit()
+    
     return jsonify(new_person.serialize()), 200
 
 
 @app.route('/favorite/planet/<int:planets_id>', methods=['DELETE'])
+@jwt_required()
 def delete_favorite_planet(planets_id):
     planet_favorite = Favorites.query.filter_by(planets_id=planets_id).first()
     if not planet_favorite:
@@ -112,6 +130,7 @@ def delete_favorite_planet(planets_id):
 
 
 @app.route('/favorite/people/<int:people_id>', methods=['DELETE'])
+@jwt_required()
 def delete_favorite_people(people_id):
     people_favorite = Favorites.query.filter_by(people_id=people_id).first()
     if not people_favorite:
